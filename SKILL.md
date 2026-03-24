@@ -1,7 +1,6 @@
 ---
 name: taobao-native
-display_name: Taobao Native CLI
-version: 1.0.26
+version: 1.0.28
 description: "Shopping assistant via Taobao Desktop client. Use when the user needs to search products, view details, add to cart, place orders, check orders, request shipping, or perform any Taobao/Tmall shopping operation."
 description_zh: "通过淘宝桌面客户端完成购物相关操作。当用户需要搜索商品、查看详情、加入购物车、下单购买、查看订单、催发货、开发票等淘宝/天猫购物操作时使用。"
 ---
@@ -57,7 +56,7 @@ taobao-native <工具名> --args '<JSON 参数>'
 
 本 Skill 文档中的「工具速查」已包含常用工具的完整说明，**优先参考本文档直接调用**。仅在以下情况使用 CLI **`--help`**：
 
-- 工具参数不确定时：`taobao-native --help <工具名>` 或 `taobao-native <工具名> --help` 查看详细 `inputSchema`
+- 工具参数不确定，或者工具返回错误时：`taobao-native --help <工具名>` 或 `taobao-native <工具名> --help`，查看最新用法
 - 需确认最新可用工具时：`taobao-native --help`（或 `-h`）列出全部工具
 
 ```bash
@@ -72,7 +71,6 @@ taobao-native open_chat --help
 2. `read_page_content` — 读取页面可见文本（用 scope 限定范围）
 3. `scan_page_elements` — 扫描可交互元素（用 filter 过滤）
 4. `click_element` / `input_text` — 执行交互
-5. `close_page` — 任务完成后关闭页面
 
 > **⚠️ 避免截断**：返回数据量较大时（如 `search_products` 通常 50+ 条），环境可能将 stdout 截断显示为 `...(truncated)`。**必须对可能返回大量数据的工具使用 `-o <文件>`**，将完整结果写入文件，stdout 仅输出摘要（含 `resultFile` 绝对路径）。拿到 `resultFile` 后读取该文件获取完整 JSON。
 > - **推荐**：`taobao-native search_products --args '{"keyword":"连衣裙"}' -o result.json`，再读取 `result.json`
@@ -100,7 +98,7 @@ taobao-native open_chat --help
 | 命令 | 用途 | 说明 |
 |------|------|------|
 | `--help` / `-h` | 列出当前可用工具及 `description` / `inputSchema` |  |
-| `--help <工具名>` | 只查某一个工具 | 亦可用 `<工具名> --help` |
+| `--help <工具名>` | 当工具返回错误时，帮助排查错误 |  |
 
 ### 启动
 
@@ -114,7 +112,7 @@ taobao-native open_chat --help
 |------|------|----------|
 | navigate | 导航到淘宝预设页面 | page: home/cart/order/message/tmall/coupon/collect/my/..., searchKey?(仅 cart/order 页面，导航后自动筛选) |
 | navigate_to_url | 打开任意 URL | url |
-| close_page | 关闭当前任务页面（首页除外） | - |
+| close_page | 关闭当前任务页面 | - |
 
 ### 页面读取
 
@@ -142,7 +140,7 @@ taobao-native open_chat --help
 | get_product_skus | **【加购前必调】** 获取商品 SKU 维度与可选规格列表 | itemId?（不传则使用当前商详页） |
 | add_to_cart | 加入购物车（自动处理 SKU 选择和弹窗）。**必须先调用 `get_product_skus` 获取可选规格，再传入完整 sku 参数** | itemId?, sku（必须与页面 SKU 维度完全匹配） |
 | get_browse_history | 获取浏览历史 | type: product/search/shop |
-| submit_product_rating | 提交商品评价（自动填充表单并提交） | merDsr?, serviceQualityScore?, saleConsignmentScore?, qualityContent?, serviceContent?, imageUrls?, gender?, birthday?, anonymous?, submit? |
+| submit_product_rating | 提交商品评价（自动填充表单并提交）。**【评价专用工具-唯一方式】评价页面内禁止使用 input_text、click_element、scan_page_elements 等工具！这些工具无法正确操作评价表单，必须使用本工具！** | qualityContent?(单商品评价内容)、qualityContents?(多商品评价内容数组，每个商品一条不同内容)、merDsr?(描述相符评分1-5)、serviceQualityScore?(卖家服务评分1-5)、saleConsignmentScore?(物流服务评分1-5)、isAppend?(是否追加评价)、serviceContent?(服务评价内容)、imageUrls?(图片路径数组)、gender?(1=男,2=女)、birthday?(格式YYYY-MM-DD)、anonymous?(是否匿名)、submit?(是否自动提交) |
 
 ### 旺旺聊天
 
@@ -179,7 +177,6 @@ taobao-native open_chat --help
 
 ## 注意事项
 
-- 任务完成后**必须**调用 `close_page`（首页不会关闭）
 - **加购前必须先调用 `get_product_skus` 获取 SKU 信息**，然后根据用户意图/偏好智能选择规格，仅在无法判断时才询问用户
 - `search_products`、`add_to_cart`、`open_chat`、`submit_product_rating` 等工具已内置完整流程，调用成功后请勿再手动操作
 - 导航后页面需加载时间，请等待后再读取内容
@@ -191,32 +188,58 @@ taobao-native open_chat --help
 
 ### 商品评价工具说明
 
-**submit_product_rating** - 自动填充并提交淘宝/天猫商品评价表单
+**submit_product_rating** - 【评价专用工具-唯一方式】自动填充并提交淘宝/天猫商品评价表单
 
-**必填参数（至少提供一项评分）：**
-- `merDsr`: 描述相符评分（1-5星）
-- `serviceQualityScore`: 卖家服务评分（1-5星）
-- `saleConsignmentScore`: 物流服务评分（1-5星）
+**绝对禁止**：评价页面内禁止使用 input_text、click_element、scan_page_elements 等工具！这些工具无法正确操作评价表单，必须使用本工具！
 
-**可选参数：**
-- `qualityContent`: 商品评价内容
-- `serviceContent`: 服务评价内容
-- `imageUrls`: 晒图URL数组（最多5张）
-- `gender`: 性别（1=男，2=女）
-- `birthday`: 生日/预产期（格式：YYYY-MM-DD）
-- `anonymous`: 是否匿名评价（默认true）
-- `submit`: 是否自动提交（默认true）
+**多商品必须差异化文案**：一个订单有多个商品时，每个商品的评价内容必须不同！禁止复制相同内容！
+
+**使用流程：**
+1. 第一步：调用本工具（不传qualityContent），获取商品数量和商品信息
+2. 第二步：根据每个商品的名称、规格，为每个商品生成不同的评价内容
+3. 第三步：再次调用本工具，传入 qualityContents 数组（每个商品一条不同的评价）
+
+**参数规则：**
+- 单商品：使用 qualityContent 参数
+- 多商品：必须使用 qualityContents 数组，数组长度=商品数量，每个元素内容必须不同！
+
+**评分必填：**首次评价必须填：merDsr(描述相符)、serviceQualityScore(卖家服务)、saleConsignmentScore(物流服务)，各1-5星。
+
+**图片可选：**imageUrls 传入图片路径数组，所有商品共用这些图片。
+
+**追加评价：**isAppend=true 时评分可不填。
+
+**参数说明：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| qualityContent | string | 【单商品专用】单个商品的评价内容必填。仅当订单只有一个商品时使用。多商品时禁止使用此参数！ |
+| qualityContents | string[] | 【多商品必填】多商品评价内容数组必填。要求：1.数组长度必须等于商品数量；2.每个元素必须是不同的评价内容，禁止重复！3.顺序与页面商品顺序一致。 |
+| merDsr | number | 描述相符评分，1-5星（首次评价必填） |
+| serviceQualityScore | number | 卖家服务评分，1-5星（首次评价必填） |
+| saleConsignmentScore | number | 物流服务评分，1-5星（首次评价必填） |
+| isAppend | boolean | 是否追加评价，默认false。追加评价时评分可不填 |
+| serviceContent | string | 服务评价内容（评价服务） |
+| imageUrls | string[] | 图片路径数组，最多5张。支持：本地文件路径、CDN地址、base64数据。所有商品共用这些图片。 |
+| gender | number | 性别，1=男，2=女 |
+| birthday | string | 生日/预产期，格式：YYYY-MM-DD，如2026-03-13 |
+| anonymous | boolean | 是否匿名评价，默认为true |
+| submit | boolean | 是否自动点击提交按钮，默认为true |
 
 **使用示例：**
+
 ```bash
 # 基础评价（只打星）
-taobao-native submit_product_rating --args '{"merDsr":5,"serviceQualityScore":5,"saleConsignmentScore":5}' --output json
+taobao-native submit_product_rating --args '{"merDsr":5,"serviceQualityScore":5,"saleConsignmentScore":5}'
 
 # 带文字评价
-taobao-native submit_product_rating --args '{"merDsr":5,"serviceQualityScore":5,"saleConsignmentScore":5,"qualityContent":"商品质量很好，非常满意","serviceContent":"卖家服务态度很好"}' --output json
+taobao-native submit_product_rating --args '{"merDsr":5,"serviceQualityScore":5,"saleConsignmentScore":5,"qualityContent":"商品质量很好，非常满意","serviceContent":"卖家服务态度很好"}'
 
 # 带晒图的评价
-taobao-native submit_product_rating --args '{"merDsr":5,"qualityContent":"很好","imageUrls":["//img.alicdn.com/xxx1.jpg","//img.alicdn.com/xxx2.jpg"]}' --output json
+taobao-native submit_product_rating --args '{"merDsr":5,"qualityContent":"很好","imageUrls":["/tmp/xxx.jpg","/tmp/yyy.jpg"]}'
+
+# 多商品评价（每个商品不同内容）
+taobao-native submit_product_rating --args '{"merDsr":5,"serviceQualityScore":5,"saleConsignmentScore":5,"qualityContents":["商品A很好","商品B不错","商品C满意"]}'
 ```
 
 ---
